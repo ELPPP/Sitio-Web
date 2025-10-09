@@ -46,3 +46,85 @@ Este módulo actuará como **intermediario estándar** entre todos los component
 2. **Uso inmediato de frameworks externos (FastAPI, gRPC, etc.):** pospuesto para una etapa posterior, cuando la teoría de base esté clara y se requiera un canal real.  
 3. **Diseñar desde cero toda la capa de transporte:** descartado como punto de partida, se optó por un enfoque híbrido (aprender los fundamentos mientras se construye una versión simplificada propia).
 
+
+## 🧭 Decisión de Diseño #3 — Replanteamiento del módulo de comunicación
+
+**Contexto:**  
+Durante la planificación inicial se había propuesto construir un **módulo propio de envío y recepción** que centralizara la comunicación entre todos los servicios del sistema (backend, worker, IA, frontend, base de datos, etc.).  
+La idea original era disponer de un bloque independiente capaz de gestionar **autenticación, cifrado, enrutamiento y transporte de datos**, de forma estandarizada entre componentes.
+
+Sin embargo, el análisis posterior —registrado en la *bitácora del 2025-10-08*— permitió comprender que esta solución **replicaba capacidades que ya ofrecen los frameworks modernos**.  
+La observación clave fue que las consultas HTTP/HTTPS **no requieren un diseño fijo previo**, sino que se **adaptan dinámicamente** al tipo de dato o estructura que el servicio necesite transferir.  
+Por tanto, crear un módulo genérico y rígido implicaba perder flexibilidad y complejidad innecesaria.
+
+---
+
+**Descubrimiento técnico:**  
+Durante la revisión de librerías y pruebas con el cliente de escritorio, se identificó que:
+- La librería **`requests`** ya cumple el rol previsto para el “módulo de envío”, gestionando tokens, cifrado y peticiones HTTP seguras.  
+- Frameworks como **FastAPI** implementan de forma nativa el comportamiento de un “módulo de recepción”, exponiendo endpoints que escuchan y responden peticiones bajo protocolos seguros.  
+
+De esta manera, el conjunto **FastAPI + requests** resuelve de forma completa la capa de transporte de datos que originalmente se pensaba construir desde cero.
+
+---
+
+**Decisión:**  
+El sistema adoptará un **modelo basado en servicios que exponen y consumen endpoints HTTP**, reemplazando la idea del bloque de comunicación por un **patrón distribuido de interacción directa entre módulos**.  
+Cada componente (backend, worker, IA, etc.) podrá:
+- Exponer sus propios endpoints mediante FastAPI.  
+- Consumir los de otros módulos mediante `requests` u otra librería equivalente.  
+
+No se desarrollará un módulo de transporte independiente, sino que la comunicación formará parte natural de la lógica de cada servicio.
+
+---
+
+**Consecuencias técnicas:**
+- Se reduce significativamente la complejidad de implementación y mantenimiento.  
+- Se gana compatibilidad inmediata con estándares HTTP y herramientas de desarrollo modernas.  
+- Las decisiones futuras de arquitectura se concentrarán en **cómo se comunican los servicios** (qué datos, cuándo y bajo qué permisos), en lugar de reinventar la capa de transporte.
+
+📎 *Referencia:* Véase la **bitácora de 2025-10-08 — Replanteamiento del módulo de comunicación** para el razonamiento completo.
+
+
+## 🧭 Decisión de Diseño #4 – Esquema de interacción entre servicios
+
+**Contexto:**  
+Con la capa de transporte ya replanteada (véase Decisión de Diseño #3), se procedió a construir un **primer esquema conceptual de interacción** entre los distintos servicios del sistema.  
+El objetivo fue definir el flujo general de información y responsabilidades entre el **cliente local**, el **backend**, el **worker**, la **IA** y las **APIs externas**.
+
+**Descripción del diseño actual:**  
+El diagrama elaborado muestra una arquitectura **orientada a eventos y peticiones**, con diferentes fases de operación representadas por flujos de colores:
+
+1. **Fase de autorización (blanca):**  
+   - El backend gestiona la autenticación con las APIs externas (ej. Spotify, YouTube).  
+   - Los tokens o credenciales resultantes se almacenan de forma segura para permitir operaciones posteriores.
+
+2. **Fase de inicialización (azul):**  
+   - El sistema obtiene las listas de reproducción disponibles y los metadatos base desde las APIs y el cliente local.  
+   - Estos datos permiten al usuario definir la configuración inicial del proceso de sincronización.
+
+3. **Fase de configuración (verde):**  
+   - El usuario emite órdenes o configuraciones personalizadas (por ejemplo, reglas de sincronización o filtros).  
+   - Estas órdenes se comunican al backend, que las distribuye a los servicios correspondientes.
+
+4. **Fase de trabajo (morado):**  
+   - El **worker** ejecuta las tareas solicitadas (comparación, reconstrucción de listas, obtención de canciones).  
+   - Durante este bucle de trabajo, el worker puede consultar a la **IA** cuando no esté seguro sobre cómo proceder o cuando deba interpretar patrones musicales o de preferencia.  
+   - El estado de progreso se actualiza continuamente hacia el backend, que lo transmite al frontend para su visualización.
+
+5. **Fase de finalización (amarilla):**  
+   - Una vez completadas las operaciones, se procede a la creación de listas equivalentes en las plataformas externas.  
+   - Cada API confirma la operación y el backend consolida el resultado en la base de datos.
+
+**Rol de la IA:**  
+La IA cumple un papel doble:
+- Asiste al worker en decisiones complejas o contextuales.  
+- Interactúa con el usuario para analizar patrones musicales, emociones o preferencias, generando configuraciones automáticas o sugerencias personalizadas.
+
+**Conclusión:**  
+Este diseño refleja el primer modelo operativo funcional del sistema.  
+Aunque aún es conceptual, establece las relaciones básicas y flujos de comunicación que guiarán el desarrollo modular de cada componente.
+
+📎 *Diagrama asociado:* `diagrama de interacción entre servicios.png`
+
+
