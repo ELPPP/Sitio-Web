@@ -115,7 +115,7 @@ Con la capa de transporte ya replanteada (véase Decisión de Diseño #3), se pr
 El objetivo fue definir el flujo general de información y responsabilidades entre el **cliente local**, el **backend**, el **worker**, la **IA** y las **APIs externas**.
 
 <p align="center">
-  <img src="esquemas%20y%20planificaciones/diagramas%20de%20ineraccion.drawio.png" width="600" alt="Diagrama de interacción entre servicios">
+  <img src="../esquemas%20y%20planificaciones/diagramas%20de%20ineraccion.drawio.png" width="600" alt="Diagrama de interacción entre servicios">
 </p>
 
 ### ⚙️ Descripción del diseño actual
