@@ -149,8 +149,87 @@ La IA cumple un papel doble:
 - Asiste al worker en decisiones complejas o contextuales.  
 - Interactúa con el usuario para analizar patrones musicales, emociones o preferencias, generando configuraciones automáticas o sugerencias personalizadas.
 
+---
+
+### ✅ Conclusión
+Este diseño refleja el primer modelo operativo funcional del sistema.  
+Aunque aún es conceptual, establece las relaciones básicas y flujos de comunicación que guiarán el desarrollo modular de cada componente.
+
+📎 *Diagrama asociado:* `diagrama de interacción entre servicios.png`
 
 
+---
+
+## 🧭 Marco de Decisión #1 — Integración con YouTube (autenticación y capa API)
+
+**Fecha de registro:** Octubre 2025  
+**Estado:** En análisis  
+**Tipo:** Marco previo a decisión  
+**Prioridad:** Alta  
+
+---
+
+### 🧩 Contexto
+
+El sistema requiere acceder a metadatos de YouTube (videos, playlists, etc.) y sincronizarlos con fuentes locales.  
+Actualmente se están evaluando opciones para definir **qué API se usará** y **cómo se manejará la autenticación** asociada a cada una.
+
+Durante el análisis se identificaron dependencias críticas entre ambos factores:  
+- El método de autenticación **depende directamente** de la API elegida (oficial o no oficial).  
+- La API oficial ofrece datos completos y precisos, pero su sistema de cuotas y flujo OAuth2 introduce fricción significativa.  
+- Las APIs no oficiales eliminan esos límites, pero implican menor estabilidad o riesgo de incompatibilidad futura.
+
+Por tanto, antes de decidir qué API adoptar, deben resolverse los criterios de equilibrio entre **control, estabilidad y fricción técnica.**
+
+---
+
+### ⚙️ Aspectos definidos hasta ahora
+
+1. **El sistema de autenticación se implementará como corresponda según la API elegida.**  
+   No se forzará un flujo OAuth si no es necesario.  
+2. **Se planea una capa de traducción modular** que unifique los métodos y formatos de respuesta, para que cambiar de API no implique reescribir el código principal.  
+3. **El diseño general asume desacoplamiento API–lógica interna**, permitiendo que las integraciones sean reemplazables.
+
+---
+
+### 🎯 Consideraciones técnicas clave
+
+- La API oficial tiene **plena cobertura funcional**, pero sufre limitaciones de cuota y dependencia del flujo OAuth.  
+- Las APIs no oficiales **reducen fricción** y eliminan límites, pero podrían carecer de soporte a largo plazo.  
+- La capa de traducción se considera el punto de equilibrio técnico entre ambas opciones.
+
+---
+
+### ⚖️ Riesgos y pendientes
+
+**Pendientes antes de tomar decisión final:**
+- Evaluar qué API no oficial ofrece mejor estabilidad y documentación.  
+- Determinar si la capa de traducción añadirá sobrecarga significativa al sistema.  
+- Testear el flujo de autenticación real con cada API candidata.  
+
+**Riesgos:**
+- Elegir una API no oficial poco mantenida.  
+- Subestimar el costo de mantener una capa de traducción sin estándares formales.
+
+---
+
+### 🔀 Alternativas previstas (sin decisión aún)
+
+1. **Adoptar API oficial (YouTube Data API v3).**  
+   + Ventajas: soporte oficial, documentación sólida.  
+   - Desventajas: cuotas, OAuth complejo.  
+
+2. **Usar API no oficial.**  
+   + Ventajas: sin límites de cuota, integración más directa.  
+   - Desventajas: menor confiabilidad y riesgo de deprecación.  
+
+3. **Modelo híbrido:** usar ambas según contexto de uso.  
+   + Ventajas: balance de precisión y flexibilidad.  
+   - Desventajas: complejidad de mantenimiento.
+
+---
+
+📎 *Referencia:* [Bitácora — Evaluación de autenticación y elección de API YouTube]
 
 
 
@@ -210,10 +289,4 @@ Indica efectos positivos y negativos de la decisión:
 
 
 
----
 
-### ✅ Conclusión
-Este diseño refleja el primer modelo operativo funcional del sistema.  
-Aunque aún es conceptual, establece las relaciones básicas y flujos de comunicación que guiarán el desarrollo modular de cada componente.
-
-📎 *Diagrama asociado:* `diagrama de interacción entre servicios.png`
