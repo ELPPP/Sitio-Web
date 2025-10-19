@@ -160,7 +160,7 @@ Aunque aún es conceptual, establece las relaciones básicas y flujos de comunic
 
 ---
 
-## 🧭 Marco de Decisión #1 — Integración con YouTube (autenticación y capa API)
+## 🧭 Marco de Decisión #5 — Integración con YouTube (autenticación y capa API)
 
 **Fecha de registro:** Octubre 2025  
 **Estado:** En análisis  
@@ -231,7 +231,81 @@ Por tanto, antes de decidir qué API adoptar, deben resolverse los criterios de 
 
 📎 *Referencia:* [Bitácora — Evaluación de autenticación y elección de API YouTube]
 
+---
 
+## 🧭 Decisión de Diseño #6 — Implementación del flujo de autenticación en YouTube mediante cliente local intermediario
+
+**Fecha de decisión:** Octubre 2025  
+**Estado:** Aprobada  
+**Prioridad:** Alta  
+
+---
+
+### 🧩 Contexto
+
+En el *Marco de Decisión #5* se dejó abierta la elección de API y el modo de autenticación para la integración con YouTube.  
+El principal problema detectado era que la **autenticación y el tipo de API estaban estrechamente vinculados**, y que el flujo OAuth2 de la API oficial resultaba poco práctico para el caso de uso (sincronización y análisis masivo de playlists).
+
+Durante el analisis de la librería `ytmusicapi` se confirmó que su autenticación no se basa en OAuth2, sino en **encabezados de sesión (`cookies`) que emulan el contexto de un navegador autenticado**.  
+Sin embargo, los navegadores impiden obtener esas cookies directamente por motivos de seguridad, lo que llevó a rediseñar el flujo completo de acceso.
+
+---
+
+### ⚙️ Decisión
+
+Se adopta una **arquitectura de autenticación delegada al cliente local**, en la cual el programa de escritorio (cliente de metadatos) actúa como **intermediario seguro** entre el backend y YouTube.  
+
+El cliente será responsable de:
+1. Extraer las cookies de sesión (`SAPISID`, `SID`, etc.) desde el entorno local del usuario.  
+2. Recibir las solicitudes del backend y agregar los encabezados necesarios para autenticarlas ante YouTube.  
+3. Reenviar las peticiones a YouTube y devolver los resultados procesados al backend.  
+
+De esta manera, la autenticación queda **fuera del alcance del navegador y del servidor web**, garantizando compatibilidad con las políticas de seguridad de los navegadores y manteniendo el diseño modular previsto.
+
+---
+
+### 🎯 Motivación
+
+- Evitar el uso del flujo OAuth2 de la API oficial y sus limitaciones de cuota.  
+- Cumplir con las restricciones de seguridad del navegador sin recurrir a hacks o inyecciones de cookies.  
+- Consolidar el rol del cliente local como **componente principal de integración** con YouTube.  
+- Mantener el **desacoplamiento total entre la lógica de negocio y la capa API**, permitiendo reemplazar fácilmente la librería o el método de autenticación.  
+- Fortalecer la seguridad del sistema al manejar los tokens únicamente en el entorno del usuario.
+
+---
+
+### ⚖️ Consecuencias
+
+**Positivas:**
+- Arquitectura más limpia y modular.  
+- Flujo de autenticación operativo y completamente local.  
+- Eliminación de dependencias críticas en el navegador.  
+- Refuerzo del rol del cliente como capa de ejecución y autenticación.  
+
+**Negativas o retos:**
+- Requiere definir una **interfaz formal de comunicación** entre cliente y backend.  
+- Incrementa ligeramente la complejidad del cliente local.  
+- Dependencia de que el usuario mantenga una sesión válida en su navegador.
+
+---
+
+### 🔀 Alternativas consideradas
+
+1. **Frontend como intermediario (descartada):**  
+   - Ventaja: integración directa con el navegador.  
+   - Desventaja: imposible acceder a cookies por *Same-Origin Policy* y `HttpOnly`.
+
+2. **Uso exclusivo de la API oficial (descartada):**  
+   - Ventaja: estabilidad y soporte oficial.  
+   - Desventaja: flujo OAuth complejo y límites de cuota que vuelven inviable el uso masivo.
+
+3. **Autenticación híbrida (descartada por ahora):**  
+   - Podría combinar API oficial para tareas livianas y `ytmusicapi` para operaciones pesadas.  
+   - Descartada temporalmente para evitar sobrecarga de mantenimiento en esta fase.
+
+---
+
+📎 *Referencia:* [Bitácora — Flujo de autenticación en YouTube (resumen técnico final)]  
 
 
 
