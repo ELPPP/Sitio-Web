@@ -96,3 +96,100 @@ La elección definitiva de la API **queda abierta**, pero con una dirección cla
 
 🧱 *Este razonamiento está directamente vinculado a la ** 🧭 Marco de Decisión #1 — Integración con YouTube (autenticación y capa API)**
 
+
+---
+
+
+
+## 🧭 2025-10-10 — Implementación y flujo de autenticación con Spotify
+
+El análisis y desarrollo se centraron en construir el **flujo de autenticación** con Spotify, entendiendo cómo obtener los permisos del usuario y transformar el código de autorización en un token de acceso funcional.
+
+Inicialmente se asumía que bastaba con una simple redirección desde el servidor Apache hacia la página de autorización de Spotify. Sin embargo, se detectó que esa redirección debía **incluir información crítica del flujo OAuth2** (como el client_id y el redirect_uri) y además **manejar el intercambio del código** devuelto por Spotify, por lo que **debía controlarse desde FastAPI**, no desde Apache.
+
+---
+
+Durante la implementación se estableció el flujo general:
+
+1. **Redirección a Spotify**  
+   Un método de FastAPI genera la URL de autorización con los parámetros requeridos y redirige al usuario hacia Spotify.  
+   El usuario concede los permisos necesarios y Spotify redirige de vuelta al servidor con un código temporal.
+
+2. **Recepción del código y canje por token**  
+   El método `callback` recibe el código de autorización y lo envía al endpoint de Spotify para obtener el token de acceso.  
+   Actualmente, solo se está manejando el **access token**, pero no el **refresh token** —esto quedó registrado como una **deuda técnica** para permitir la renovación automática de sesiones.
+
+3. **Delegación del token al worker**  
+   Una vez recibido, el token debe ser reenviado a un componente secundario (worker) que actuará como intermediario para realizar las solicitudes a Spotify.  
+   Esta parte está planificada como el siguiente paso en la implementación.
+---
+
+### 🧩 Conclusión
+
+El flujo de autenticación con Spotify **ya es funcional**, aunque con limitaciones técnicas por resolver.  
+La estructura modular entre FastAPI (autenticación) y el worker (operaciones) permitirá mantener el código limpio y flexible ante futuras ampliaciones.
+
+🧱 *Este razonamiento está directamente vinculado a la **🧭 Marco de Decisión #2 — Autenticación y manejo de tokens en Spotify***
+
+---
+
+
+## 🧭 2025-10-10 —  Flujo de autenticación en YouTube
+
+En análisis previos se había establecido que **la autenticación dependía directamente de la API elegida**, y que por diseño debía permanecer **desacoplada de la lógica de negocio**, de modo que pudiera reemplazarse fácilmente si la API sufría alteraciones o bloqueos.
+
+Durante esta etapa se examinó con mayor detalle el funcionamiento interno de la autenticación en la librería `ytmusicapi`, descubriendo que el proceso no emplea el flujo OAuth tradicional, sino que se basa en **encabezados (cookies)** que replican el contexto de una sesión de navegador legítima.  
+A partir de esto se reconstruyó el flujo técnico real:
+
+---
+
+### 🔹 1. Obtención del contexto de sesión
+
+1. El usuario inicia sesión en YouTube desde su navegador habitual.  
+2. Desde esa sesión se extraen los encabezados y cookies activas (especialmente `SAPISID`, `SID` o sus equivalentes según el dominio).  
+3. Con esos datos se reconstruye el **contexto de autenticación** que YouTube utiliza internamente para validar al usuario.
+
+> En esencia, el sistema **emula una sesión de navegador ya autenticada**, evitando el flujo OAuth y aprovechando los tokens que el propio navegador mantiene válidos.
+
+---
+
+### 🔹 2. El problema: acceso a cookies y restricciones del navegador
+
+Inicialmente se propuso que el **frontend actuara como puente** entre el backend y YouTube.  
+La idea era que el backend enviara sus solicitudes al frontend, y este —al estar en la máquina del usuario— las reenviara directamente a YouTube usando su sesión autenticada.
+
+Sin embargo, se descubrió un obstáculo crítico:  
+los navegadores **impiden el acceso a las cookies de sesión de YouTube desde dominios externos**, bloqueando cualquier intento de obtener `SAPISID` o `SID` por políticas de seguridad (*Same-Origin Policy* y protecciones `HttpOnly`).  
+
+Esto hacía imposible que el navegador cumpliera ese rol de intermediario directo sin vulnerar la seguridad del entorno.
+
+---
+
+### 🔹 3. Solución: cliente intermediario de escritorio
+
+Para superar esta limitación se definió un **cliente intermediario local**, reutilizando el mismo programa encargado de la limpieza de metadatos.  
+Este cliente tendría tres responsabilidades principales:
+
+1. **Extraer** las cookies de sesión directamente desde el entorno local del usuario.  
+2. **Recibir** las solicitudes del backend y complementarlas con los encabezados necesarios para comunicarse con YouTube.  
+3. **Reenviar** las peticiones autenticadas a YouTube y **devolver** los resultados al backend.
+
+De este modo, el flujo de autenticación se mantiene **plenamente operativo** sin violar las restricciones del navegador, y al mismo tiempo se logra una **integración natural entre el cliente local y el sistema web**.
+
+Además, esta decisión resolvía otro requisito estructural:  
+al ubicar la lógica específica de autenticación dentro del cliente, la **lógica de negocio del sistema web queda completamente desacoplada**.  
+Si en el futuro se requiere cambiar de API o modificar la estrategia de autenticación, bastará con **actualizar los métodos del cliente**, sin afectar el backend ni el frontend.
+
+---
+
+### 🔹 4. Conclusión del flujo
+
+Lo que comenzó como una limitación técnica —la imposibilidad del frontend de manipular cookies seguras— terminó fortaleciendo la arquitectura general.  
+La autenticación de YouTube se consolidó dentro del cliente de escritorio, otorgándole un **rol central y estructural** dentro del ecosistema del proyecto.
+
+> En resumen, el cliente no solo limpia metadatos: ahora también **funciona como puente de autenticación y ejecución segura** para las operaciones de YouTube, manteniendo el backend y el frontend libres de responsabilidades sensibles.
+
+---
+
+**Estado actual:** flujo funcional y justificado estructuralmente.  
+**Pendiente:** definir y documentar la **interfaz de comunicación** entre el cliente local y el backend, garantizando un manejo encapsulado y seguro de los tokens de sesión.
