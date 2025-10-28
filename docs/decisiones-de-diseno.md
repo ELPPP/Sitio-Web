@@ -6,7 +6,7 @@
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** En definición / Base conceptual establecida  
-**Prioridad:** Alta (núcleo técnico futuro)  
+
 
 ---
 
@@ -58,7 +58,7 @@ Este módulo actuará como **intermediario estándar** entre todos los component
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** Conclusión del análisis / Cambio de enfoque  
-**Prioridad:** Alta  
+
 
 ---
 
@@ -106,7 +106,7 @@ No se desarrollará un módulo de transporte independiente, sino que la comunica
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** Diseño conceptual validado  
-**Prioridad:** Media / Base para futuras iteraciones  
+
 
 ---
 
@@ -165,7 +165,7 @@ Aunque aún es conceptual, establece las relaciones básicas y flujos de comunic
 **Fecha de registro:** Octubre 2025  
 **Estado:** En análisis  
 **Tipo:** Marco previo a decisión  
-**Prioridad:** Alta  
+
 
 ---
 
@@ -237,7 +237,7 @@ Por tanto, antes de decidir qué API adoptar, deben resolverse los criterios de 
 
 **Fecha de decisión:** Octubre 2025  
 **Estado:** Aprobada  
-**Prioridad:** Alta  
+  
 
 ---
 
@@ -307,6 +307,248 @@ De esta manera, la autenticación queda **fuera del alcance del navegador y del 
 
 📎 *Referencia:* [Bitácora — Flujo de autenticación en YouTube (resumen técnico final)]  
 
+---
+
+🧭 Decisión de Diseño #7 — Uso de Redis como base de datos temporal en memoria
+
+Fecha de decisión: octubre 2025
+Estado: Aprobada
+
+🧩 Contexto
+
+Durante la planificación del sistema, se estableció que la base de datos debía funcionar como una mesa de trabajo temporal para el análisis y relación de playlists musicales.
+El carácter efímero de los datos y la necesidad de acceso inmediato y compartido entre varios servicios evidenciaron las limitaciones de las bases SQL convencionales.
+
+⚙️ Decisión
+
+Se propone adoptar Redis como sistema de almacenamiento en memoria principal para el microservicio de análisis y relación de canciones.
+
+🎯 Motivación
+
+Redis ofrece latencias muy bajas y un modelo de datos key–value adecuado a las estructuras tipo diccionario ya presentes.
+
+Permite una integración natural entre servicios distribuidos sin requerir esquemas rígidos.
+
+Se ajusta a la filosofía no persistente y volátil del proyecto, donde los datos se regeneran con cada sesión.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Simplificación del flujo entre worker, backend e IA.
+
+Facilidad para reiniciar entornos sin migraciones ni restauraciones.
+
+Negativas:
+
+Sin persistencia garantizada entre sesiones.
+
+Dependencia de la memoria disponible y posibles límites de capacidad.
+
+🔀 Alternativas consideradas
+
+SQL (PostgreSQL/MySQL): descartada por rigidez estructural y lentitud en operaciones iterativas.
+
+SQLite: descartada por limitaciones de concurrencia y acoplamiento excesivo al entorno local.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #8 — Separación de roles entre backend y worker
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Durante el análisis arquitectónico se identificó que si el backend delegaba todas las operaciones en el worker (incluido el acceso a la base de datos), este se convertiría en un intermediario forzado, reduciendo la eficiencia general del sistema.
+
+⚙️ Decisión
+
+Se propone que:
+
+El worker sea el único servicio autorizado a modificar la base de datos.
+
+El backend acceda en modo lectura (observador) para recuperar datos y enviarlos al frontend.
+
+🎯 Motivación
+
+Aislar responsabilidades entre procesamiento y visualización.
+
+Prevenir conflictos de escritura y redundancias de comunicación.
+
+Mantener un acoplamiento mínimo entre servicios.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Mayor claridad funcional y facilidad de escalamiento.
+
+Separación explícita entre análisis de datos y entrega visual.
+
+Negativas:
+
+Requiere definir un sistema claro de permisos y endpoints.
+
+El backend no podrá modificar datos directamente.
+
+🔀 Alternativas consideradas
+
+Backend como intermediario de todas las operaciones: descartada por sobrecarga y aumento de latencia.
+
+Acceso directo de todos los servicios: descartada por riesgo de corrupción concurrente.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #9 — Uso de diccionarios anidados en lugar de strings únicos
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+En los esquemas iniciales se consideró almacenar cada playlist completa como un único string JSON.
+Se previó que esto generaría un punto único de falla y operaciones ineficientes al modificar datos parciales.
+
+⚙️ Decisión
+
+Se propone almacenar cada playlist como una diccionario compuesto (HSET), donde cada canción es un registro independiente identificado por su ID.
+
+🎯 Motivación
+
+Permitir operaciones atómicas sobre canciones individuales.
+
+Reducir la posibilidad de corrupción global por errores de escritura.
+
+Mantener coherencia con la estructura lógica empleada en Python.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Facilita depuración y manipulación directa.
+
+Mejora la resiliencia ante fallos parciales.
+
+Negativas:
+
+Incremento marginal en el consumo de RAM.
+
+🔀 Alternativas consideradas
+
+Playlist completa en un solo string: descartada por fragilidad estructural.
+
+Serialización binaria: descartada por pérdida de legibilidad y dificultad de inspección.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #10 — Implementación de índices paralelos para búsquedas rápidas
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Las búsquedas directas en diccionarios compuestos en Redis no son eficientes.
+Era necesario un mecanismo que permitiera localizar canciones por metadatos (artista, género, año) sin recorrer la totalidad de las claves.
+
+⚙️ Decisión
+
+Se propone crear estructuras de índice paralelas usando  para registrar las canciones asociadas a cada valor de metadato.
+Ejemplo:
+
+```python
+SADD artist:LinkinPark song:001
+SADD genre:rock song:001
+ZADD year 2003 song:001
+```
+
+🎯 Motivación
+
+Permitir búsquedas instantáneas y combinaciones booleanas (SINTER, ZRANGEBYSCORE).
+
+Reducir iteraciones masivas y mejorar la escalabilidad de consultas.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Aceleración notable en las búsquedas de metadatos.
+
+Reutilización de índices para backend e IA.
+
+Negativas:
+
+Duplicación parcial de datos.
+
+Requiere rutinas de sincronización entre índices y contenido principal.
+
+🔀 Alternativas consideradas
+
+Uso de RediSearch: pospuesto para futuras fases; requiere dependencia adicional.
+
+Recorrido iterativo completo: descartado por ineficiencia.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #11 — Entorno Redis local para el servicio de IA
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Durante la simulación conceptual del flujo de interacción con la IA se observó que esta necesitaría realizar búsquedas personalizadas, filtrados y conteos independientes del backend.
+Centralizar todo ese procesamiento en la base de datos principal complicaría la gestión de memoria y las políticas de acceso.
+
+⚙️ Decisión
+
+Se propone dotar al servicio de IA de un entorno Redis local y autónomo, usado exclusivamente como espacio temporal de cálculo, etiquetado y filtrado de resultados.
+Este entorno podrá limpiarse o regenerarse sin afectar la base de datos principal.
+
+🎯 Motivación
+
+Permitir a la IA realizar operaciones intensivas sin bloquear otros servicios.
+
+Favorecer la experimentación y adaptación de filtros propios.
+
+Reducir riesgos de contaminación de datos entre instancias.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Mayor modularidad y aislamiento funcional.
+
+Escalabilidad del servicio de IA sin impacto directo en el flujo principal.
+
+Negativas:
+
+Aumento de complejidad en la orquestación de contenedores.
+
+Duplicación temporal de datos durante los procesos analíticos.
+
+🔀 Alternativas consideradas
+
+Uso compartido del Redis principal: descartado por riesgo de interferencias y sobreuso de memoria.
+
+Procesamiento sin Redis local: descartado por limitaciones en persistencia temporal de resultados.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
 
 
 <!-- 
@@ -319,7 +561,6 @@ De esta manera, la autenticación queda **fuera del alcance del navegador y del 
 
 **Fecha de decisión:** [mes año]  
 **Estado:** [Propuesta / Aprobada / En desarrollo / Descartada]  
-**Prioridad:** [Alta / Media / Baja]  
 
 ---
 
