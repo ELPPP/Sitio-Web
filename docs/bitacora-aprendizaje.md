@@ -190,6 +190,136 @@ La autenticación de YouTube se consolidó dentro del cliente de escritorio, oto
 > En resumen, el cliente no solo limpia metadatos: ahora también **funciona como puente de autenticación y ejecución segura** para las operaciones de YouTube, manteniendo el backend y el frontend libres de responsabilidades sensibles.
 
 ---
+## 🧭 2025-10-28 —  Planificacion de la BD 
 
 **Estado actual:** flujo funcional y justificado estructuralmente.  
 **Pendiente:** definir y documentar la **interfaz de comunicación** entre el cliente local y el backend, garantizando un manejo encapsulado y seguro de los tokens de sesión.
+
+
+###🔹 1. Planteamiento inicial: rol de la base de datos
+
+El problema que dio origen a este análisis fue la carga masiva de datos en el frontend.
+El navegador no podía manejar simultáneamente cientos de canciones sin saturarse, por lo que se concluyó que debía implementarse un sistema de carga por lotes.
+Esto derivó en una cadena lógica:
+
+El frontend solicita lotes de datos según el desplazamiento del usuario (scroll).
+
+El backend responde a esas solicitudes recuperando fragmentos específicos desde la DB.
+
+Para evitar sobrecargar al worker, el backend requería acceso directo a la base de datos en calidad de observador, mientras que el worker sería el único editor autorizado (agregar, modificar o eliminar registros).
+
+El modelo final posicionó a los cuatro servicios (frontend, backend, worker e IA) como microservicios independientes, comunicados mediante HTTP, y contenedorizados para mantener su aislamiento operativo.
+
+###🔹 2. Evaluación de tecnologías: SQL vs Redis
+
+En un principio se asumió un enfoque clásico con SQL.
+Sin embargo, al analizar los requisitos del sistema se concluyó que este modelo era ineficiente:
+
+Se necesitaba acceso extremadamente rápido en memoria.
+
+La base de datos debía ser dinámica y efímera (los datos se eliminan al finalizar el proceso).
+
+La estructura de los datos ya existía en forma de diccionarios Python, lo que hacía natural un modelo key–value.
+
+Bajo estos criterios, Redis emergió como la opción más coherente.
+Además, se comprendió que Redis opera prácticamente como un espacio compartido de memoria RAM entre servicios, optimizado para accesos concurrentes.
+
+###🔹 3. Primer diseño estructural
+
+El esquema inicial propuso una organización independiente por fuente:
+```python
+YTplaylist = {id1: {...}, id2: {...}}
+SPplaylist = {id1: {...}, id2: {...}}
+LCplaylist = {id1: {...}, id2: {...}}
+relations = {YT1: {SPid3, LCid4}, YT3: {LCid5, SPid6}}
+```
+
+Luego surgió una mejora:
+a medida que el sistema detectara relaciones entre canciones de distintas fuentes, estas serían extraídas de las playlists originales y trasladadas a versiones sorted, dejando a las listas principales cada vez más ligeras y evitando duplicaciones.
+Se mantendrían copias de respaldo (imagen) para recuperación ante errores.
+
+Este modelo resultó en nueve estructuras activas: tres originales, tres sorted y tres de respaldo, más el arreglo general de relaciones.
+
+###🔹 4. Riesgo identificado: atomización de estructuras
+
+Durante el montaje mínimo de Redis se exploró la forma de persistir estas estructuras.
+Inicialmente se pensó en almacenar una playlist completa como un único valor de texto (string).
+Sin embargo, se detectó un riesgo grave: cualquier corrupción o error sobre ese string afectaría toda la playlist, y las operaciones parciales implicarían reconvertir un bloque completo de cientos de registros.
+
+La solución fue adoptar diccionarios anidados como valores dentro de Redis, permitiendo editar o leer cada canción individualmente sin convertir estructuras completas.
+Esto redujo la complejidad y mejoró la seguridad de las operaciones.
+
+Este hallazgo marcó el punto de inflexión: Redis no sería un simple contenedor de strings, sino una base de datos semiestructurada con acceso granular a cada entrada.
+
+###🔹 5. Optimización de búsqueda y relaciones
+
+El siguiente cuello detectado fue el de búsqueda de relaciones.
+Buscar equivalencias desde una fuente distinta implicaba iteraciones largas sobre estructuras grandes.
+Para resolverlo, se diseñó una indexación auxiliar de relaciones, que mapea directamente cada ID de canción al ID de relación correspondiente:
+
+```python
+relations = {
+  "rel_001": {"equivalents":
+    {"yt": "yt123",
+    "sp": "sp456"}}
+}
+relation_index = {
+  "yt123": "rel_001",
+  "sp456": "rel_001"}
+```
+
+Esta decisión duplicó parcialmente la información, pero redujo las búsquedas a dos consultas directas en lugar de una iteración masiva, mejorando drásticamente la velocidad.
+
+###🔹 6. Estandarización y métodos básicos
+
+Se unificaron todas las fuentes dentro de una sola estructura jerárquica:
+
+```python
+playlists = {
+    "yt": {...},
+    "sp": {...},
+    "local": {...}
+}
+```
+
+Con esta estructura se desarrollaron métodos básicos para:
+
+Añadir canciones.
+
+Obtener canciones por ID.
+
+Crear relaciones entre canciones.
+
+Definir búsquedas flexibles (para IA o backend).
+
+Se acordó diferir la construcción definitiva del formato JSON de búsqueda hasta disponer de datos reales provenientes del worker.
+
+###🔹 7. Consideraciones sobre indexación y consumo de memoria
+
+Redis permite consultas avanzadas mediante etiquetas si los metadatos están almacenados como pares clave:valor simples.
+Esto llevó a considerar una posible duplicación adicional de datos, lo que en teoría aumentaría el consumo de RAM.
+Sin embargo, una estimación preliminar —90000 canciones con 15 metadatos cada una— arrojó un consumo aproximado de 500 MB, considerado aceptable.
+
+De esta conclusión emergió un principio general de diseño:
+
+Es preferible evitar bucles de búsqueda incluso si eso implica mayor consumo de memoria temporal.
+
+###🔹 8. Rol del servicio de IA
+
+Durante la simulación del comportamiento del asistente se estableció que la IA requerirá:
+
+Un entorno Redis local para manipular sus propios filtros.
+
+Comandos de limpieza y reconstrucción para gestionar sus estructuras auxiliares.
+
+Capacidad para ejecutar operaciones de filtrado y conteo, a partir de las cuales inferirá resultados o heurísticas.
+
+Se determinó que librerías como Redisearch podrían incorporarse más adelante, aunque las operaciones booleanas nativas de Redis ya ofrecen la flexibilidad necesaria.
+
+###🔹 9. Estado actual
+
+El sistema de almacenamiento temporal ha sido conceptualizado y estructurado con base en Redis.
+Las estructuras principales y los métodos de manipulación ya están definidos en código y listos para pruebas unitarias.
+Las decisiones de diseño tomadas priorizan acceso directo, modularidad y resiliencia frente a errores.
+
+Pendiente: validar empíricamente el consumo de memoria real durante operaciones del worker y definir el formato JSON final para las consultas de la IA y el backend.
