@@ -550,6 +550,99 @@ Procesamiento sin Redis local: descartado por limitaciones en persistencia tempo
 
 ---
 
+## 🧭 Decisión de Diseño #12 — [Puente Intermedio entre Worker y Youtube]
+
+**Fecha de decisión:** [octubre 2025]  
+**Estado:** [En desarrollo]  
+
+---
+
+### 🧩 Contexto
+debido a la inviabilidad de usar la API de youtube por su cuota finalmente se decidio que se creara un cliente intermedio usando la libreria de ytmusicapi este punto intermedio recibira las solicitudes del worker y las remitira a youtube desde la computadora del usuario
+
+---
+
+### ⚙️ Decisión
+aqui se decide por un lado que se llevara a cabo de esta forma  sin embargo este metodo requiere autorizacion mediante headers por ende es requerido crear un sistema para gestionar la autorizacion y gestion de headers 
+
+---
+
+### 🎯 Motivación 
+- manejo autonomo de headers
+- consumo de cuota de la API oficial
+- dificultad para un usuario de exportar os headers manualmente
+- imposibilidad de colocar esta capa en el fonted
+    
+- Problemas que resuelve
+- interaccion entre el worker y youtube
+- manejo de headers
+  
+
+---
+
+### ⚖️ Consecuencias
+Indica efectos positivos y negativos de la decisión:  
+- el trafico hacia youtube se desviara por la computadora del usuario  
+
+---
+
+### 🔀 Alternativas consideradas
+1. usar la api oficial —complejidad de la cuota.  
+2. exportar los headers manualmente — alta complejidad para el usuario.  
+
+---
+
+📎 *Referencia:* [Bitácoras 13 y 14]
+---
+
+## 🧭 Decisión de Diseño #13 — [Título breve y descriptivo]
+
+**Fecha de decisión:** [mes año]  
+**Estado:** [Propuesta / Aprobada / En desarrollo / Descartada]  
+
+---
+
+### 🧩 Contexto
+Explica qué problema, necesidad o duda originó esta decisión.  
+Incluye el razonamiento técnico o conceptual que llevó a considerar un cambio.
+
+---
+
+### ⚙️ Decisión
+Describe qué se decidió exactamente.  
+Debe poder leerse de forma independiente (por ejemplo, “Se adopta FastAPI como módulo receptor de peticiones HTTP internas…”).
+
+---
+
+### 🎯 Motivación
+Enumera las razones principales que justifican la decisión:  
+- Beneficios esperados  
+- Problemas que resuelve  
+- Qué aprendizaje técnico la respalda  
+
+---
+
+### ⚖️ Consecuencias
+Indica efectos positivos y negativos de la decisión:  
+- Cambios en la arquitectura o dependencias  
+- Impacto en la complejidad  
+- Qué se deberá revisar o adaptar más adelante  
+
+---
+
+### 🔀 Alternativas consideradas
+1. Alternativa 1 — razones de descarte.  
+2. Alternativa 2 — razones de descarte.  
+3. [Opcional] Referencias cruzadas a bitácoras o diagramas.
+
+---
+
+📎 *Referencia:* [Bitácora relacionada o fuente de análisis]
+-->
+
+
+
+
 
 <!-- 
 ==============================  
