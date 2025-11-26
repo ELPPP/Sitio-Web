@@ -323,3 +323,112 @@ Las estructuras principales y los métodos de manipulación ya están definidos 
 Las decisiones de diseño tomadas priorizan acceso directo, modularidad y resiliencia frente a errores.
 
 Pendiente: validar empíricamente el consumo de memoria real durante operaciones del worker y definir el formato JSON final para las consultas de la IA y el backend.
+
+---
+
+## 🧭 2025-11-XX — Desarrollo del módulo de captura de headers y establecimiento del puente YouTube → Worker
+
+El bloque surgió al analizar cómo debía operar el **puente local** entre el worker y YouTube.  
+El worker no puede comunicarse directamente con YouTube porque sus peticiones carecen del contexto del navegador (headers, cookies, user-agent). Esto genera respuestas inconsistentes o bloqueos.  
+Por tanto, el acceso debía delegarse al cliente local del usuario, que sí puede realizar solicitudes legítimas a YouTube.
+
+Este razonamiento llevó a una conclusión estructural:  
+**para que el puente funcione, se requiere obtener los headers reales del navegador en tiempo de ejecución.**  
+Ese requisito originó todo el módulo de captura de headers.
+
+---
+
+## Fase 1 — Exploración de métodos de obtención de headers
+
+La primera aproximación fue investigar si los navegadores seguían almacenando tokens o cookies de sesión en sus directorios locales.  
+En sistemas actuales, los navegadores utilizan contenedores aislados y cifrados, lo que vuelve inaccesible esa información.  
+Este resultado descartó cualquier intento de extracción a partir del sistema de archivos.
+
+También se consideró pedirle al usuario que copiara los headers manualmente, pero se descartó por razones de usabilidad y fiabilidad.
+
+---
+
+## Fase 2 — Elección del mecanismo de captura
+
+Sin rutas externas viables, la conclusión fue que los headers debían capturarse directamente **dentro del navegador**.  
+Esto llevó a la decisión de implementar una **extensión**, capaz de escuchar peticiones reales y transmitir sus headers cuando el sistema lo requiriera.
+
+La extensión resolvió además el problema de detectar el navegador predeterminado: el usuario instala donde usa, y ese se convierte en la fuente legítima.
+
+---
+
+## Fase 3 — Planteamiento del flujo inicial
+
+El primer prototipo funcionó, pero con un orden incorrecto:  
+la extensión iniciaba la captura sin que el backend lo solicitara.  
+La lógica debía invertirse.
+
+Se introdujeron dos endpoints:
+
+- uno para solicitar headers,  
+- otro para recibirlos.
+
+Esto hizo necesario el uso del **nonce**, empleado para validar que cada captura correspondiera a una solicitud específica.
+
+---
+
+## Fase 4 — Necesidad de un canal persistente
+
+Durante el diseño del flujo surgió un límite arquitectónico:  
+la extensión **no puede ser contactada** directamente por el backend.
+
+Esto obligó a introducir un canal persistente iniciado desde la extensión, con **WebSockets** como solución.  
+La estructura adoptada fue:
+
+- la extensión abre la conexión,  
+- el backend confirma y mantiene la sesión,  
+- los pings sostienen el enlace,  
+- el backend envía el nonce cuando el worker lo necesita.
+
+---
+
+## Fase 5 — Seguridad y control de sesiones
+
+Aparecieron problemas de autenticación:  
+no existía garantía de que la conexión proviniera de la extensión legítima, ni un mecanismo para evitar múltiples conexiones simultáneamente.
+
+Por ello se incorporó un **segundo token**, enviado en cada ping.  
+Este token permite mantener una sesión exclusiva y validar la identidad a lo largo de la conexión.
+
+---
+
+## Fase 6 — Diagnóstico del error 403
+
+Durante la primera ejecución completa del WebSocket apareció un error 403 sin explicación clara.  
+No provenía de la extensión, ni del navegador, ni coincidía con un fallo típico de CORS.  
+Se consideraron escenarios de incompatibilidad entre FastAPI y WebSockets, pero los síntomas no encajaban.
+
+Para aislar el error, se construyó una versión mínima del servidor WebSocket.  
+En esa prueba, el WebSocket funcionó correctamente, lo que señaló que el problema estaba dentro de la estructura del backend original.
+
+Finalmente, se identificó la causa:  
+una **clase envolvente** añadida en iteraciones previas —generada durante una sesión con la IA— alteraba el routing y bloqueaba silenciosamente la inicialización del WebSocket, este cambio cuando lo vi no lo cuestione porque asumi que si la IA lo habia incluido es porque alguna cosa lo debia requerir, y si no hubiese depurado este error personalmente habria acabado generando un websocket totalmente fuera, el aprendizaje con este error mas que la enseñanza de siempre de
+
+---
+
+## Reflexión (bloque de apertura)
+
+Este error expuso una dinámica técnica particular: cuando se trabaja con herramientas capaces de generar estructuras complejas, pueden introducirse patrones ligeramente más avanzados de lo que se domina en el momento. Ese desbalance vuelve difícil evaluar críticamente cada elemento incorporado al sistema.
+
+**[Aquí insertas tu reflexión personal y emocional expandida]**
+
+---
+
+## Conclusión
+
+El módulo de headers quedó definido como un sistema estable compuesto por:
+
+- una extensión que captura headers reales,  
+- un canal WebSocket iniciado por la extensión,  
+- un mecanismo de nonce para validar cada operación,  
+- un token persistente para autenticación continua,  
+- y endpoints coordinados para solicitar y recibir los headers.
+
+La arquitectura permite que el worker solicite operaciones a YouTube mediante el puente local, utilizando sesiones reales del navegador del usuario.  
+Este bloque concluyó estable, funcional y con un marco de seguridad coherente, completando un pilar fundamental del diseño general del proyecto.
+
