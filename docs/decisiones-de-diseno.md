@@ -560,6 +560,13 @@ Procesamiento sin Redis local: descartado por limitaciones en persistencia tempo
 ### 🧩 Contexto
 debido a la inviabilidad de usar la API de youtube por su cuota finalmente se decidio que se creara un cliente intermedio usando la libreria de ytmusicapi este punto intermedio recibira las solicitudes del worker y las remitira a youtube desde la computadora del usuario
 
+la estructura propuesta es la siguiente:
+
+---
+
+<p align="center">
+  <img src="../esquemas%20y%20planificaciones/flujo%20headers.drawio.png" width="600" alt="Diagrama de interacción entre endpoints">
+</p>
 ---
 
 ### ⚙️ Decisión
@@ -595,50 +602,78 @@ Indica efectos positivos y negativos de la decisión:
 📎 *Referencia:* [Bitácoras 13 y 14]
 ---
 
-## 🧭 Decisión de Diseño #13 — [Título breve y descriptivo]
+## 🧭 Decisión de Diseño #13 — [Creacion de extension]
 
-**Fecha de decisión:** [mes año]  
-**Estado:** [Propuesta / Aprobada / En desarrollo / Descartada]  
+**Fecha de decisión:** [noviembre 2025]  
+**Estado:** [Implementada]  
 
 ---
 
 ### 🧩 Contexto
-Explica qué problema, necesidad o duda originó esta decisión.  
-Incluye el razonamiento técnico o conceptual que llevó a considerar un cambio.
+para el uso de la API es requerido obtener los headers o cokies de sesion de la cuenta de youtube del usuario, debido a la friccion de extraer los headers manualmente se creo un mecanismo para extraerlos manualmente, sin embargo como la proteccion de los navegadores ha aumentado significativamente estos headers ya no se ubican en un lugar accesible, por tal motivo fue requerido crear una extension que escuche la peticion y capture las cokies, sin emabrgo debido a la importancia de estas credenciales se implementaron medidas de seguridad como habilitar y desabilitar la escucha solo cuando se requieran los headers, ademas de crear mecanismos para evitar la suplantacion en el proceso de renovacion de cokies 
 
 ---
 
 ### ⚙️ Decisión
-Describe qué se decidió exactamente.  
-Debe poder leerse de forma independiente (por ejemplo, “Se adopta FastAPI como módulo receptor de peticiones HTTP internas…”).
+crear una extension que extraiga headers de sesion de la aplicacion de youtube mediante el metodo de escucha, asi como implementar mecanismos para evitar o complicar la suplantacion en alguna parte del proceso
 
 ---
 
 ### 🎯 Motivación
-Enumera las razones principales que justifican la decisión:  
-- Beneficios esperados  
-- Problemas que resuelve  
-- Qué aprendizaje técnico la respalda  
+-requerimiento de obtener los headers de sesion   
+
+---
+
+### ⚖️ Consecuencias 
+- se requiere la existencia de un mecanismo de solicitud de headers en el backend del usuario  que se encargue de renovar los headers cuando algun endpoint principal tenga problemas con ellos, ademas es requerido incorporar medidas para evitar pedidos excesivos o algun tipo de abuso o suplantacion
+
+---
+
+### 🔀 Alternativas consideradas
+1. Alternativa 1 buscar las cokies en la carpeta de cokies - descartada debido a que ya no se encuentran ahi 
+2. Alternativa 2 buscar las cockies en el sandbox del navegador - descartada porque tampoco se encuentran ahi
+---
+
+📎 *Referencia:* [Bitácora relacionada o fuente de análisis]
+---
+
+## 🧭 Decisión de Diseño #14 — [uso de websockets en el mecanismo de]
+
+**Fecha de decisión:** [noviembre 2025]  
+**Estado:** [Implementada]
+
+
+---
+
+### 🧩 Contexto
+debido a politicas de seguridad del navegador las extensiones no pueden recibir peticiones desde el exterior, solo pueden emitirlas, sin emabrgo el mecanismo diseñado se activa desde el backend siendo este el que inicia el mecanismo de refrescado de headers por ende es requerido un mecanismo de conexion que se pueda iniciar desde la extension pero permita que el flujo de datos fluya hacia la extension.
+
+---
+
+### ⚙️ Decisión
+se usara una conexion "websocket" que iniciara la extension y sera usado para transmitir el nonce hacia la extension
+
+---
+
+### 🎯 Motivación
+- requisito de seguridad de el navegador
 
 ---
 
 ### ⚖️ Consecuencias
-Indica efectos positivos y negativos de la decisión:  
-- Cambios en la arquitectura o dependencias  
-- Impacto en la complejidad  
-- Qué se deberá revisar o adaptar más adelante  
+
+-se requiere un metodo de proteccion para el websocket, este metodo consiste en la firma de cada peticion  con un token de forma que se valida que el ente que mantenga la conexion viva sea el mismo que la arranco o sea la extension 
 
 ---
 
 ### 🔀 Alternativas consideradas
 1. Alternativa 1 — razones de descarte.  
 2. Alternativa 2 — razones de descarte.  
-3. [Opcional] Referencias cruzadas a bitácoras o diagramas.
 
 ---
 
 📎 *Referencia:* [Bitácora relacionada o fuente de análisis]
--->
+
 
 
 
@@ -653,7 +688,7 @@ Indica efectos positivos y negativos de la decisión:
 ## 🧭 Decisión de Diseño #X — [Título breve y descriptivo]
 
 **Fecha de decisión:** [mes año]  
-**Estado:** [Propuesta / Aprobada / En desarrollo / Descartada]  
+**Estado:** [Propuesta / Implementada/ En desarrollo / Descartada]  
 
 ---
 
