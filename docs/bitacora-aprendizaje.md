@@ -326,7 +326,7 @@ Pendiente: validar empíricamente el consumo de memoria real durante operaciones
 
 ---
 
-## 🧭 2025-11-XX — Desarrollo del módulo de captura de headers y establecimiento del puente YouTube → Worker
+## 🧭 2025-11-27 — Desarrollo del módulo de captura de headers y establecimiento del puente YouTube → Worker
 
 El bloque surgió al analizar cómo debía operar el **puente local** entre el worker y YouTube.  
 El worker no puede comunicarse directamente con YouTube porque sus peticiones carecen del contexto del navegador (headers, cookies, user-agent). Esto genera respuestas inconsistentes o bloqueos.  
