@@ -6,7 +6,7 @@
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** En definición / Base conceptual establecida  
-**Prioridad:** Alta (núcleo técnico futuro)  
+
 
 ---
 
@@ -58,7 +58,7 @@ Este módulo actuará como **intermediario estándar** entre todos los component
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** Conclusión del análisis / Cambio de enfoque  
-**Prioridad:** Alta  
+
 
 ---
 
@@ -106,7 +106,7 @@ No se desarrollará un módulo de transporte independiente, sino que la comunica
 
 **Fecha de decisión:** octubre 2025  
 **Estado:** Diseño conceptual validado  
-**Prioridad:** Media / Base para futuras iteraciones  
+
 
 ---
 
@@ -160,12 +160,12 @@ Aunque aún es conceptual, establece las relaciones básicas y flujos de comunic
 
 ---
 
-## 🧭 Marco de Decisión #1 — Integración con YouTube (autenticación y capa API)
+## 🧭 Marco de Decisión #5 — Integración con YouTube (autenticación y capa API)
 
 **Fecha de registro:** Octubre 2025  
 **Estado:** En análisis  
 **Tipo:** Marco previo a decisión  
-**Prioridad:** Alta  
+
 
 ---
 
@@ -231,6 +231,450 @@ Por tanto, antes de decidir qué API adoptar, deben resolverse los criterios de 
 
 📎 *Referencia:* [Bitácora — Evaluación de autenticación y elección de API YouTube]
 
+---
+
+## 🧭 Decisión de Diseño #6 — Implementación del flujo de autenticación en YouTube mediante cliente local intermediario
+
+**Fecha de decisión:** Octubre 2025  
+**Estado:** Aprobada  
+  
+
+---
+
+### 🧩 Contexto
+
+En el *Marco de Decisión #5* se dejó abierta la elección de API y el modo de autenticación para la integración con YouTube.  
+El principal problema detectado era que la **autenticación y el tipo de API estaban estrechamente vinculados**, y que el flujo OAuth2 de la API oficial resultaba poco práctico para el caso de uso (sincronización y análisis masivo de playlists).
+
+Durante el analisis de la librería `ytmusicapi` se confirmó que su autenticación no se basa en OAuth2, sino en **encabezados de sesión (`cookies`) que emulan el contexto de un navegador autenticado**.  
+Sin embargo, los navegadores impiden obtener esas cookies directamente por motivos de seguridad, lo que llevó a rediseñar el flujo completo de acceso.
+
+---
+
+### ⚙️ Decisión
+
+Se adopta una **arquitectura de autenticación delegada al cliente local**, en la cual el programa de escritorio (cliente de metadatos) actúa como **intermediario seguro** entre el backend y YouTube.  
+
+El cliente será responsable de:
+1. Extraer las cookies de sesión (`SAPISID`, `SID`, etc.) desde el entorno local del usuario.  
+2. Recibir las solicitudes del backend y agregar los encabezados necesarios para autenticarlas ante YouTube.  
+3. Reenviar las peticiones a YouTube y devolver los resultados procesados al backend.  
+
+De esta manera, la autenticación queda **fuera del alcance del navegador y del servidor web**, garantizando compatibilidad con las políticas de seguridad de los navegadores y manteniendo el diseño modular previsto.
+
+---
+
+### 🎯 Motivación
+
+- Evitar el uso del flujo OAuth2 de la API oficial y sus limitaciones de cuota.  
+- Cumplir con las restricciones de seguridad del navegador sin recurrir a hacks o inyecciones de cookies.  
+- Consolidar el rol del cliente local como **componente principal de integración** con YouTube.  
+- Mantener el **desacoplamiento total entre la lógica de negocio y la capa API**, permitiendo reemplazar fácilmente la librería o el método de autenticación.  
+- Fortalecer la seguridad del sistema al manejar los tokens únicamente en el entorno del usuario.
+
+---
+
+### ⚖️ Consecuencias
+
+**Positivas:**
+- Arquitectura más limpia y modular.  
+- Flujo de autenticación operativo y completamente local.  
+- Eliminación de dependencias críticas en el navegador.  
+- Refuerzo del rol del cliente como capa de ejecución y autenticación.  
+
+**Negativas o retos:**
+- Requiere definir una **interfaz formal de comunicación** entre cliente y backend.  
+- Incrementa ligeramente la complejidad del cliente local.  
+- Dependencia de que el usuario mantenga una sesión válida en su navegador.
+
+---
+
+### 🔀 Alternativas consideradas
+
+1. **Frontend como intermediario (descartada):**  
+   - Ventaja: integración directa con el navegador.  
+   - Desventaja: imposible acceder a cookies por *Same-Origin Policy* y `HttpOnly`.
+
+2. **Uso exclusivo de la API oficial (descartada):**  
+   - Ventaja: estabilidad y soporte oficial.  
+   - Desventaja: flujo OAuth complejo y límites de cuota que vuelven inviable el uso masivo.
+
+3. **Autenticación híbrida (descartada por ahora):**  
+   - Podría combinar API oficial para tareas livianas y `ytmusicapi` para operaciones pesadas.  
+   - Descartada temporalmente para evitar sobrecarga de mantenimiento en esta fase.
+
+---
+
+📎 *Referencia:* [Bitácora — Flujo de autenticación en YouTube (resumen técnico final)]  
+
+---
+
+🧭 Decisión de Diseño #7 — Uso de Redis como base de datos temporal en memoria
+
+Fecha de decisión: octubre 2025
+Estado: Aprobada
+
+🧩 Contexto
+
+Durante la planificación del sistema, se estableció que la base de datos debía funcionar como una mesa de trabajo temporal para el análisis y relación de playlists musicales.
+El carácter efímero de los datos y la necesidad de acceso inmediato y compartido entre varios servicios evidenciaron las limitaciones de las bases SQL convencionales.
+
+⚙️ Decisión
+
+Se propone adoptar Redis como sistema de almacenamiento en memoria principal para el microservicio de análisis y relación de canciones.
+
+🎯 Motivación
+
+Redis ofrece latencias muy bajas y un modelo de datos key–value adecuado a las estructuras tipo diccionario ya presentes.
+
+Permite una integración natural entre servicios distribuidos sin requerir esquemas rígidos.
+
+Se ajusta a la filosofía no persistente y volátil del proyecto, donde los datos se regeneran con cada sesión.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Simplificación del flujo entre worker, backend e IA.
+
+Facilidad para reiniciar entornos sin migraciones ni restauraciones.
+
+Negativas:
+
+Sin persistencia garantizada entre sesiones.
+
+Dependencia de la memoria disponible y posibles límites de capacidad.
+
+🔀 Alternativas consideradas
+
+SQL (PostgreSQL/MySQL): descartada por rigidez estructural y lentitud en operaciones iterativas.
+
+SQLite: descartada por limitaciones de concurrencia y acoplamiento excesivo al entorno local.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #8 — Separación de roles entre backend y worker
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Durante el análisis arquitectónico se identificó que si el backend delegaba todas las operaciones en el worker (incluido el acceso a la base de datos), este se convertiría en un intermediario forzado, reduciendo la eficiencia general del sistema.
+
+⚙️ Decisión
+
+Se propone que:
+
+El worker sea el único servicio autorizado a modificar la base de datos.
+
+El backend acceda en modo lectura (observador) para recuperar datos y enviarlos al frontend.
+
+🎯 Motivación
+
+Aislar responsabilidades entre procesamiento y visualización.
+
+Prevenir conflictos de escritura y redundancias de comunicación.
+
+Mantener un acoplamiento mínimo entre servicios.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Mayor claridad funcional y facilidad de escalamiento.
+
+Separación explícita entre análisis de datos y entrega visual.
+
+Negativas:
+
+Requiere definir un sistema claro de permisos y endpoints.
+
+El backend no podrá modificar datos directamente.
+
+🔀 Alternativas consideradas
+
+Backend como intermediario de todas las operaciones: descartada por sobrecarga y aumento de latencia.
+
+Acceso directo de todos los servicios: descartada por riesgo de corrupción concurrente.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #9 — Uso de diccionarios anidados en lugar de strings únicos
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+En los esquemas iniciales se consideró almacenar cada playlist completa como un único string JSON.
+Se previó que esto generaría un punto único de falla y operaciones ineficientes al modificar datos parciales.
+
+⚙️ Decisión
+
+Se propone almacenar cada playlist como una diccionario compuesto (HSET), donde cada canción es un registro independiente identificado por su ID.
+
+🎯 Motivación
+
+Permitir operaciones atómicas sobre canciones individuales.
+
+Reducir la posibilidad de corrupción global por errores de escritura.
+
+Mantener coherencia con la estructura lógica empleada en Python.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Facilita depuración y manipulación directa.
+
+Mejora la resiliencia ante fallos parciales.
+
+Negativas:
+
+Incremento marginal en el consumo de RAM.
+
+🔀 Alternativas consideradas
+
+Playlist completa en un solo string: descartada por fragilidad estructural.
+
+Serialización binaria: descartada por pérdida de legibilidad y dificultad de inspección.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #10 — Implementación de índices paralelos para búsquedas rápidas
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Las búsquedas directas en diccionarios compuestos en Redis no son eficientes.
+Era necesario un mecanismo que permitiera localizar canciones por metadatos (artista, género, año) sin recorrer la totalidad de las claves.
+
+⚙️ Decisión
+
+Se propone crear estructuras de índice paralelas usando  para registrar las canciones asociadas a cada valor de metadato.
+Ejemplo:
+
+```python
+SADD artist:LinkinPark song:001
+SADD genre:rock song:001
+ZADD year 2003 song:001
+```
+
+🎯 Motivación
+
+Permitir búsquedas instantáneas y combinaciones booleanas (SINTER, ZRANGEBYSCORE).
+
+Reducir iteraciones masivas y mejorar la escalabilidad de consultas.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Aceleración notable en las búsquedas de metadatos.
+
+Reutilización de índices para backend e IA.
+
+Negativas:
+
+Duplicación parcial de datos.
+
+Requiere rutinas de sincronización entre índices y contenido principal.
+
+🔀 Alternativas consideradas
+
+Uso de RediSearch: pospuesto para futuras fases; requiere dependencia adicional.
+
+Recorrido iterativo completo: descartado por ineficiencia.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+🧭 Decisión de Diseño #11 — Entorno Redis local para el servicio de IA
+
+Fecha de decisión: octubre 2025
+Estado: Propuesta teórica
+
+
+🧩 Contexto
+
+Durante la simulación conceptual del flujo de interacción con la IA se observó que esta necesitaría realizar búsquedas personalizadas, filtrados y conteos independientes del backend.
+Centralizar todo ese procesamiento en la base de datos principal complicaría la gestión de memoria y las políticas de acceso.
+
+⚙️ Decisión
+
+Se propone dotar al servicio de IA de un entorno Redis local y autónomo, usado exclusivamente como espacio temporal de cálculo, etiquetado y filtrado de resultados.
+Este entorno podrá limpiarse o regenerarse sin afectar la base de datos principal.
+
+🎯 Motivación
+
+Permitir a la IA realizar operaciones intensivas sin bloquear otros servicios.
+
+Favorecer la experimentación y adaptación de filtros propios.
+
+Reducir riesgos de contaminación de datos entre instancias.
+
+⚖️ Consecuencias
+
+Positivas:
+
+Mayor modularidad y aislamiento funcional.
+
+Escalabilidad del servicio de IA sin impacto directo en el flujo principal.
+
+Negativas:
+
+Aumento de complejidad en la orquestación de contenedores.
+
+Duplicación temporal de datos durante los procesos analíticos.
+
+🔀 Alternativas consideradas
+
+Uso compartido del Redis principal: descartado por riesgo de interferencias y sobreuso de memoria.
+
+Procesamiento sin Redis local: descartado por limitaciones en persistencia temporal de resultados.
+
+📎 Referencia: Bitácora 2025-10-28 — Diseño del sistema de almacenamiento temporal en Redis
+
+---
+
+## 🧭 Decisión de Diseño #12 — [Puente Intermedio entre Worker y Youtube]
+
+**Fecha de decisión:** [octubre 2025]  
+**Estado:** [En desarrollo]  
+
+---
+
+### 🧩 Contexto
+debido a la inviabilidad de usar la API de youtube por su cuota finalmente se decidio que se creara un cliente intermedio usando la libreria de ytmusicapi este punto intermedio recibira las solicitudes del worker y las remitira a youtube desde la computadora del usuario
+
+la estructura propuesta es la siguiente:
+
+---
+
+<p align="center">
+  <img src="../esquemas%20y%20planificaciones/flujo%20headers.drawio.png" width="600" alt="Diagrama de interacción entre endpoints">
+</p>
+---
+
+### ⚙️ Decisión
+aqui se decide por un lado que se llevara a cabo de esta forma  sin embargo este metodo requiere autorizacion mediante headers por ende es requerido crear un sistema para gestionar la autorizacion y gestion de headers 
+
+---
+
+### 🎯 Motivación 
+- manejo autonomo de headers
+- consumo de cuota de la API oficial
+- dificultad para un usuario de exportar os headers manualmente
+- imposibilidad de colocar esta capa en el fonted
+    
+- Problemas que resuelve
+- interaccion entre el worker y youtube
+- manejo de headers
+  
+
+---
+
+### ⚖️ Consecuencias
+Indica efectos positivos y negativos de la decisión:  
+- el trafico hacia youtube se desviara por la computadora del usuario  
+
+---
+
+### 🔀 Alternativas consideradas
+1. usar la api oficial —complejidad de la cuota.  
+2. exportar los headers manualmente — alta complejidad para el usuario.  
+
+---
+
+📎 *Referencia:* [Bitácoras 13 y 14]
+---
+
+## 🧭 Decisión de Diseño #13 — [Creacion de extension]
+
+**Fecha de decisión:** [noviembre 2025]  
+**Estado:** [Implementada]  
+
+---
+
+### 🧩 Contexto
+para el uso de la API es requerido obtener los headers o cokies de sesion de la cuenta de youtube del usuario, debido a la friccion de extraer los headers manualmente se creo un mecanismo para extraerlos manualmente, sin embargo como la proteccion de los navegadores ha aumentado significativamente estos headers ya no se ubican en un lugar accesible, por tal motivo fue requerido crear una extension que escuche la peticion y capture las cokies, sin emabrgo debido a la importancia de estas credenciales se implementaron medidas de seguridad como habilitar y desabilitar la escucha solo cuando se requieran los headers, ademas de crear mecanismos para evitar la suplantacion en el proceso de renovacion de cokies 
+
+---
+
+### ⚙️ Decisión
+crear una extension que extraiga headers de sesion de la aplicacion de youtube mediante el metodo de escucha, asi como implementar mecanismos para evitar o complicar la suplantacion en alguna parte del proceso
+
+---
+
+### 🎯 Motivación
+-requerimiento de obtener los headers de sesion   
+
+---
+
+### ⚖️ Consecuencias 
+- se requiere la existencia de un mecanismo de solicitud de headers en el backend del usuario  que se encargue de renovar los headers cuando algun endpoint principal tenga problemas con ellos, ademas es requerido incorporar medidas para evitar pedidos excesivos o algun tipo de abuso o suplantacion
+
+---
+
+### 🔀 Alternativas consideradas
+1. Alternativa 1 buscar las cokies en la carpeta de cokies - descartada debido a que ya no se encuentran ahi 
+2. Alternativa 2 buscar las cockies en el sandbox del navegador - descartada porque tampoco se encuentran ahi
+---
+
+📎 *Referencia:* [Bitácora relacionada o fuente de análisis]
+---
+
+## 🧭 Decisión de Diseño #14 — [uso de websockets en el mecanismo de]
+
+**Fecha de decisión:** [noviembre 2025]  
+**Estado:** [Implementada]
+
+
+---
+
+### 🧩 Contexto
+debido a politicas de seguridad del navegador las extensiones no pueden recibir peticiones desde el exterior, solo pueden emitirlas, sin emabrgo el mecanismo diseñado se activa desde el backend siendo este el que inicia el mecanismo de refrescado de headers por ende es requerido un mecanismo de conexion que se pueda iniciar desde la extension pero permita que el flujo de datos fluya hacia la extension.
+
+---
+
+### ⚙️ Decisión
+se usara una conexion "websocket" que iniciara la extension y sera usado para transmitir el nonce hacia la extension
+
+---
+
+### 🎯 Motivación
+- requisito de seguridad de el navegador
+
+---
+
+### ⚖️ Consecuencias
+
+-se requiere un metodo de proteccion para el websocket, este metodo consiste en la firma de cada peticion  con un token de forma que se valida que el ente que mantenga la conexion viva sea el mismo que la arranco o sea la extension 
+
+---
+
+### 🔀 Alternativas consideradas
+1. Alternativa 1 — razones de descarte.  
+2. Alternativa 2 — razones de descarte.  
+
+---
+
+📎 *Referencia:* [Bitácora relacionada o fuente de análisis]
+
+
 
 
 
@@ -244,8 +688,7 @@ Por tanto, antes de decidir qué API adoptar, deben resolverse los criterios de 
 ## 🧭 Decisión de Diseño #X — [Título breve y descriptivo]
 
 **Fecha de decisión:** [mes año]  
-**Estado:** [Propuesta / Aprobada / En desarrollo / Descartada]  
-**Prioridad:** [Alta / Media / Baja]  
+**Estado:** [Propuesta / Implementada/ En desarrollo / Descartada]  
 
 ---
 
