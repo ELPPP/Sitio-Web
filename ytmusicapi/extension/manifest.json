@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "YT Headers Exporter (one-shot)",
+  "version": "1.0",
+  "description": "Captura una vez las cookies/headers de YouTube Music y las envía al worker local (autorización manual).",
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "cookies",
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://music.youtube.com/*",
+    "https://www.youtube.com/*",
+    "http://127.0.0.1:8002/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YT Headers Exporter (one-shot)"
+  }
+}

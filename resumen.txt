@@ -1,0 +1,90 @@
+ok esto es un resumen de prompts a mi manera que pretendo que uses de contexto para reeorganizarlo en un lenguaje mas tecnico 
+
+
+entonces despues de la ultima toma de apuntes inicie a entender o plantear como debia ser mi DB, sabia en ese momento lo que habia parloteado todo el rato 
+
+que "la DB seria solo una mesa de trabajo o almacenamiento temporal para el proceso de analisis "
+
+y mirando mis prompts el problema inicial que toque o cargue en ram fue la nesesidad de carga por lotes que debia tener el fronted , pues no podia meter todos los datos en el fronted porque se hiba a colapsar, por ende eso implicaba que debia hacer una carga por lotes, y esto a su ve implicaba que el fronted acabaria solicitando lotes de datos dependiendo de lo que el usuario buscara mediante el scroll
+lo que a su vez implicaba que el fronted haria que el backend pidiera lotes de canciones a discrecion del scroll del usuario por ende en conclusion el backend tambien debia tener acceso a la DB en calidad de observador pues si se llevava la cosa como en el diagrama inicial donde el backend pasaba todo al worker y este consultaba la BD tendria al pobre worker sirviendo de mandadero al backend 
+
+#un contexto a suministrar para entendimiento de este resumen es que worker, backend, DB e IA son por asi decirlo servicios en comunicacion, lo que implica que su diseño esta pensado para que esten separados, en escencia se piensa como que son servidores aparte que se comunican por http (o HTTPS mas bien pero aja), por ende se puede decir que estan desacoplados y por ende se deben pensar como entes independientes (este concepto se vale para mantenerse asi del hecho de que cada servicio iria en un contendor con debido montaje y deben comunicar ciertas cosas entre si, es por esto que hacer que la peticion vaya a worker y luego a DB es un camino mas largo#
+
+por ende la conclusion inicial tomada ahi es que el backend pasaria al worker solo configuracion suministrada por el usuario y accederia a la BD en claidad de observador para tomar la info y llevarla al fronted, sin embargo worker seria el unico editor de la BD (o sea el unico que agregue, modifique o elimine datos de la BD
+
+
+ahora... la siguiente cosa que se miro es el lenguaje o sistema que se usaria para la BD (debido a mis conocimientos siempre asumi que seria SQL pero en medio de la converzacion con la IA ella siempre habia mencionado el sistema redis, hablando con ella se entendio por un lado que el tipo de DataBase que usaria tendria que tener el acceso mas rapido posible, asi mismo esta DB debia ser dinamica, esta se hiba a borrar una vez el proceso termine, por ende, no era del todo persistente, ademas previamente en el desarrrollo de la interfaz con kivy habiamos estructurado el almacenamiento de los datos mediante diccionarios, por esos tres motivos acabo siendo mas eficiente y util utilizar redis como sistema de almcenamiento en vez de sql en parte porque trasladar esas logicas que ya habiamos constuido con diccionarios a tablas tambien se veia como algo complejo
+
+otro aspecto a mencionar es que jamas habia trabajado con redis, mi unico contacto con el fue un dia que hice un ctf y me cole en un servicio de redis "mal configurado" y para este punto del resumen simplemente sabia su "raon de existir" que era ser "ram compartida entre servicios supuestamente?" 
+
+la estructura que se propuso en un princiio era algo asi:
+
+Ytplaylist:{id1:{title:"",artist:"",year:"",.....},id2:{title:"",artist:"",year:"",.....},id3:{title:"",artist:"",year:"",.....},....}
+
+
+SPplaylist:{id1:{title:"",artist:"",year:"",.....},id2:{title:"",artist:"",year:"",.....},id3:{title:"",artist:"",year:"",.....},....}
+
+
+LCplaylist:{id1:{title:"",artist:"",year:"",.....},id2:{title:"",artist:"",year:"",.....},id3:{title:"",artist:"",year:"",.....},....}
+
+relations:{YT1:{SPid3,LCid4},YT3{LCid5,SPid6},.......}
+
+
+una primera decision de diseño que se me ocurrio fue que cada playlist YTplaylist,SPplaylist,LCplaylist tendria una version inicial, pero a su vez una vez se hallaran relaciones entre dos o mas canciones de la playlist estas canciones se extraerian de estas playlists y se enviarian a homologos "sorted" o sea  playlist YTplaylistsorted,SPplaylistsorted,LCplaylistsorted de modo que la variable original se iria vaciando, de esa forma se evitarian dobles relaciones y a su vez el proceso de relacion se aceleraria al sacar de la iteracion las canciones que ya fueron encontradas, por ultimo por viejos trumas personales suelo ocnsiderar correcto guardar una version previa o de backup por si algo sale mal o para tener una referencia por ende esa estructura de playlist tendria un homologo de imagen y un homologo sorted siendo 9 estructuras y su arreglo de relaciones
+
+redis era un sistema de archivos que funcionaba a partir de pares claves:valor asi que se establecio en un principio que se usarian diccionarios, pero para resumir un punto de la converzacion la IA estaba pensando en almacenar toda la playlist en un string o sea explicado mejor
+
+
+ais mismo otro aspecto a tener en cuenta es que el proceso de generar relaciones estaria a cargo del worker y seria un proceso progresivo y de hecho el proceso principal 
+
+en este orden cada variable seria una playlist  y habria un arreglo que describiria la relacion entre las diferentes canciones entre las playlists 
+
+durante el proceso de montaje minimo del redis y las estructuras se observaron procesos minimos como que este por lo general se programabaa dentro de contendores y para ello se debia levantar directamente una imagen o contendor de redis (fue interezante entender que no habia capa de S.O dentro sino lo puramente nesesario (bno analizandolo es la filosofia de los contenedores, no?) 
+
+tambien se entendio que redis acaba siendo sumamnete parecido a python con comandos especificos,
+
+otro aspecto que habia que considerar es que una playlist podria llegar tener mas de 900 canciones y cada cancion o la representacion de esas canciones serian sus determinados metadatos
+
+bueno pues la IA en un principio estaba asumiendo que seria algo asi: YTplaylist:"toda la playlist"
+
+eso me llevo a plantear... que pasa si ese solo clave valor sufriera un daño?  si... "un neutrino atravezaba mi maquina y gopeaba esa variable y la hacia inconsistente?, eso causaria un daño de toda una playlist y ya entrando a un problema mas factible, el proceso de añadir o modificar algo en esa playlist implicaba acceder a un clave valor que poseeria un string superlargo que convertiria a arreglo, para que luego esta fuese modificada (añadir, modificar, eliminar datos) y luego esta estructura mdificada debia ser reconvertida en un string astronomico para luego ser remodificada en la BD , trabajo que podria ser sencillo con playlists completas pero podia oler un punto finito donde alguna cosa generaria una limitacion, entre eso que modificar una sola cancion implicaba mover toooda la playlist,
+
+ al hacerle ver ese problema a la IA esta me planteo usar una libreria que permita guardar estructuras mas especializadas, sin embargo tambien me mostro que se podian guardar diccionarios en pares clave valor asi que se escogio esa alternativa pues asi se puede solicitar leer un valor concreto  o modificar un valor concreto en vez de todo ese proceso de ocnversion (hmm acabo de tener dudas de esta parte, podrias corroborar en la web que esto sea asi? (o sea que con este orden le pueda pedir al redis modificar un valor concreto en vez de trastear todo y asi))
+
+por otro lado se toca despues un problema de velocidad pues si bien ya tenia mi arrelgo relations, si mas adelante quisiera validar las elaciones de una cancion tendria un problema pues si decidia ver las relaciones de una cancion de la playlist que escoja como madre esto podria ser tan rapido como solicitarla en memoria, sin emabargo si quisiera buscar las relaciones de una cancion de otra playlist tendria que iterar masivamente buscando el inidice y luego leer y extraer el dato donde la encuentre, cosa que generaria un cuello de iteracion que realentizaria la busqueda
+aqui la IA me sugirio usar un arreglo de inidices de relaciones  que relacionaria un ID de una cancion a la relacion donde estaria vinculada, eso haria que buscar la relacion de un dato concreto seria tan rapido como buscar su  inidice de relacion y luego buscar o llamar ese inidcie y leer sus datos (dos busquedas directas en vez de una iteracion larga) 
+ este arreglo "relations index" implicaria que pudiese guardar cada relacion bajo un index aparte(lo que ponia todas las playlists en un mismo nivel jerarquico) y luego atar en el arreglo de indice de relaciones cada ID de cancion a este ID general) dejando ambas estructuras con este orden:
+
+playlists = {
+    "yt": {"yt123": {"title": "Numb"}},
+    "sp": {"sp456": {"title": "Numb"}},
+    "local": {"lc789": {"title": "Numb"}}
+}
+
+relations = {
+    "rel_001": {"equivalents": {"yt": "yt123", "sp": "sp456", "local": "lc789"}}
+}
+
+relation index = {"yt123": "rel_001", "sp456": "rel_001", "lc789": "rel_001"}
+
+
+admito que esta idea me disgustaba al principio ya que implicaba tener un arreglo repleto de muchos indices sueltos sin mucho orden a los cuales accederia para buscar lo que ya podria inferir con mi arreglo "relations"(duplicacion) , sin embargo si de verdad usar un esqwuema asi implicaba reducir la busqueda a dos consultas en vez de buscar en una pila de datos pos era muy util
+
+tambien por motivos de automatizacion se decidio unificar las fuentes de las playlists en una sola variable o sea pasar de tener una variable "playlist de youtube sorted" habria una sola variables "playlist sorted" que dentro tendria sus subarreglos de las diferentes fuentes (esto fue tambien sugerencia de la IA y respecto a mi no siento que repercuta negativamente en algo) 
+
+luego... se pasa un buen rato creando codigo para crear estas estructuras, y los diferentes metodos de añadido, edicion y visualizacion
+
+respecto a este bloque se puede mencionar que se creo un metodo para añadir canciones, otro para obtener canciones especificas (por  su ID) y otro metodo para crear una relacion entre canciones
+al pasar a crear los metodos de lectura del backend y la IA se entendio que era buena idea crear una busqueda flexible para la IA (para que ella busque como le de la gana) y usar esa misma busqueda pero con JSONs ya predeterminados o como sea para el backend) 
+este metodo se dejo en el papel pues se definio que este JSON debia crearse mirando los datos reales obtenidos mediante la API y el worker y se decidio esperar a que ya hallan datos traidos por el worker y luego si dependiendo de ello hacer este JSON
+
+sin emabrgo si nos dimos cuenta de que esa busqueda por metadatos hiba a generar otro bucle de busqueda iterada y la IA menciono que redis tiene mecanismos de busqueda añadiendo etiquetas a los metadatos dependiendo de si son "palabras o numeros" pero que estos valores debian ir en pares clave:valor simples, mas no dentro de un diccionario, esto nos llevo a que ella sugiriera una solucion parecida al relation index, cosa que se me hizo que generaria un problema de duplicacion aun mas grande y que engordaria demaciado y  haria que el consumo en ram de la DB se volviese gigantesco O_O , sin embargo le pedi a la IA que hiciera una estimacion a vuelo de pajaro y segun sus calculos 90000 canciones con 15 metadatos  cada una con sus respectivas "estructuras clave:valor" y sus homologos de relacion con sus respectivos index ocupaban 500mb por tal motivo por el momento se pretende llevar de esa manera, sin embargo como no revise las cuentas personalmente hay que esperar a que el worker cree los datos de esa manera para poder conifrmar si el consumo de ram es asi de bajo , pues si es asi de bajo preocuparse por el consumo de ram manejando arreglos de solo datos se vuelve... discriminable y llevo a una conclusion parcial de que: "es más prioritario evitar bucles de búsqueda que ponerse fitnes con la memoria" 
+
+otor aspecto a añadir es que para la creacion de los ID's de el arreglo "relations" se penso en usar una variable (o mas bien un valor clave valor llamado "NREL" que almacenaria el ultimo indice de relaciones usado 
+
+cabe mencionar que para llegar a la conclusion de como debia buscar la IA aproveche al LLM y le pedi que actuara como la IA que hiba a incorporar y entre chanza y chanza acabamos deduciendo que por un lado la IA requiere acceso a servicios de etiquetado y extras para poder inferir los resultados de las busquedas que haga en mi BD, por otro lado en mi BD haria realmente dos procesos, FILTRADO de canciones por algun requisito, por otro lado "CONTEOS" de datos con x caracteristicas par aluego estimar porcentajes y con ayuda de las fuentes externas hacer procesos de heuristica y asi generar conversacion con el usuario, asi mismo se definio que se le deberia otorgar a la IA un servicio de redis local para que pueda organizar las cosas como quiere y traer la data, asi mismo un comando de limpieza o algo asi para que pueda tener sus propias estructuras y manejarlas a discrecion
+
+
+por ultimo al analizar la capa de traducir el JSON que enviaria la IA y el backend a un scritpt de busqueda y filtrado flexible la IA menciono la idea de instalar librerias adicionales como "redisearch" para hacer busquedas avanzadas pero los metodos normales permiten hacer logica booleana y construir estructuras logicas lo suficientemente utiles como para hacer lo que se quiere hacer
+
+ese calculo mencionado mas arriba es el mismo calculo que has de recordar en tu ventana de contexto 

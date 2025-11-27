@@ -1,0 +1,35 @@
+
+para iniciar el fronted simplemente corra:  "npm run dev"
+no olvide correr esto en el powershell estando en la carpeta fronted
+los cambios se actualizan solos, OJO NO CERRAR LA CONSOLA O MATARA EL SERVER (si la cierra simplemente repita este proceso) 
+
+crear un entorno virtual de python: "python -m venv .venv"
+
+para correr un entorno de FAST API:
+active primero el entorno virtual de python: ".\.venv\Scripts\Activate.ps1"
+ (esto es para aislar los paquetes importados )
+para intalar fastapi(las librerias): "pip install fastapi uvicorn"
+
+y este es para librerias adicionales: "pip install requests python-dotenv"
+
+arrancar el servidor de fastapi: "uvicorn main:app --reload --port 8000"
+
+el puerto cambia dependiendo del server que vaya a arrancar
+
+backend: 8000
+worker: 8001
+IA:8002
+DB:8003
+congelar dependencias: "pip freeze > requirements.txt"
+
+link para ver el swager del servidor: http://127.0.0.1:8000/docs  (cambia 8000 por el puerto que inicialize) 
+
+
+
+
+
+
+
+
+
+http://localhost:3000

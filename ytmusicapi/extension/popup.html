@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>YT Headers Exporter</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      width: 300px;
+      padding: 12px;
+    }
+
+    h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+    }
+
+    p {
+      font-size: 12px;
+      color: #444;
+    }
+
+    .button-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* PUNTO DE ESTADO */
+    .status-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid #888;
+      position: relative;
+    }
+
+    .status-dot.red {
+      background-color: #e74c3c;
+    }
+
+    .status-dot.yellow {
+      background-color: #f1c40f;
+    }
+
+    .status-dot.green {
+      background-color: #2ecc71;
+    }
+
+    /* Tooltip simple */
+    .status-dot::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 150%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: #fff;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .status-dot:hover::after {
+      opacity: 1;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h3>Exportar headers — una sola vez</h3>
+  <p>
+    Al pulsar <strong>ACEPTO Y AUTORIZO</strong> la extensión habilita la captura,
+    abre YouTube Music y captura la primera cabecera válida. Después se desactiva.
+  </p>
+
+  <div class="button-container">
+    <button id="startBtn">ACEPTO Y AUTORIZO</button>
+    <div id="statusDot" class="status-dot red" data-tooltip="mensaje rojo"></div>
+  </div>
+
+  <div id="status">Esperando acción del usuario</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
