@@ -1,4 +1,8 @@
 backend/.env
 backend/venv/
+ytmusicapi/.venv/
+.venv/
+**/.venv/
+
 __pycache__/
 *.pyc

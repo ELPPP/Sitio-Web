@@ -1,0 +1,74 @@
+ @router.websocket("/auth/ytm/ws")
+    async def websocket_auth_ytm(ws: WebSocket):
+        print("hola :3")
+        global active_connection, active_token
+    
+        # --- ORIGEN ---
+        origin = ws.headers.get("origin", "")
+        print("origin:", origin)
+    
+        allowed_prefix = "chrome-extension://koljknhbmamjmhhgeddfdamlmlaonamo"
+        allowed_origins = {
+            "http://127.0.0.1:8002",
+            "http://localhost:8002",
+        }
+    
+        origin_ok = (
+            origin.startswith(allowed_prefix) or
+            origin in allowed_origins
+        )
+    
+        # Si YA hay conexión activa → rechazamos
+        if active_connection is not None:
+            await ws.accept()
+            await ws.send_json({"error": "conexion_activa"})
+            await ws.close()
+            return
+    
+        # Si el origin NO es válido → rechazamos
+        if not origin_ok:
+            await ws.accept()
+            await ws.send_json({"error": "origin_no_permitido"})
+            await ws.close()
+            return
+    
+        # --- Aceptamos SOLO UNA VEZ ---
+        await ws.accept()
+    
+        # Guardamos conexión
+        active_connection = ws
+        active_token = uuid4().hex
+    
+        print("[WS] Nueva conexión aceptada.")
+        await ws.send_json({"token": active_token, "nonce": state.New_nonce})
+    
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(ws.receive_json(), timeout=CONNECTION_TIMEOUT)
+                except asyncio.TimeoutError:
+                    print("[WS] Timeout: cerrando conexión por inactividad.")
+                    break
+                
+                received_token = data.get("token")
+    
+                if received_token != active_token:
+                    await ws.send_json({"error": "token_invalido"})
+                    continue
+                
+                # nuevo token
+                active_token = uuid4().hex
+    
+                nonce_value = getattr(state, "New_nonce", None)
+    
+                await ws.send_json({"token": active_token, "nonce": nonce_value})
+    
+        except WebSocketDisconnect:
+            print("[WS] Conexión cerrada por el cliente.")
+        except Exception as e:
+            print(f"[WS] Error inesperado: {e}")
+        finally:
+            active_connection = None
+            active_token = None
+            await ws.close()
+            print("[WS] Conexión liberada y cerrada.")

@@ -5,10 +5,13 @@ console.log("[BG] background loaded (one-shot)");
 
 const API_URL = "http://127.0.0.1:8002"; // <-- modificar si cambia backend
 const WS_URL = "ws://127.0.0.1:8002/auth/ytm/ws";    // <-- WebSocket del backend (para nonce)
-
 let captureActive = false;
 let listenerRegistered = false;
 let currentNonce = null;
+
+let connectionStatus = "red";
+chrome.storage.local.set({ connectionStatus });
+
 
 // ============================================================================
 // WEBSOCKET: Conexión persistente para recibir nonces en tiempo real
@@ -25,8 +28,11 @@ let currentNonce = null;
     ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
+      Semstate="GREEN"
       chrome.runtime.sendMessage({ type: "STATUS_UPDATE", state: "green" });
       console.log("[BG][WS] Conectado al backend, esperando token inicial...");
+      connectionStatus = "green";
+      chrome.storage.local.set({ connectionStatus: "green" });
     };
 
     ws.onmessage = (event) => {
@@ -35,6 +41,7 @@ let currentNonce = null;
 
         // Caso 1: backend manda error
         if (data.error) {
+          Semstate="YELLOW"
           chrome.runtime.sendMessage({ type: "STATUS_UPDATE", state: "yellow" });
           console.warn("[BG][WS] Error del backend:", data.error);
           return;
@@ -65,7 +72,10 @@ let currentNonce = null;
     }, 8000);
 
     ws.onclose = (ev) => {
+      Semstate="RED"
       chrome.runtime.sendMessage({ type: "STATUS_UPDATE", state: "red" });
+      connectionStatus = "red";
+      chrome.storage.local.set({ connectionStatus: "red" });
       console.warn("[BG][WS] Conexión cerrada (code:", ev.code, ")");
       if (pingInterval) clearInterval(pingInterval);
       activeToken = null;
@@ -74,8 +84,11 @@ let currentNonce = null;
 
     ws.onerror = (err) => {
       console.error("[BG][WS] Error en WebSocket:", err);
+      
       chrome.runtime.sendMessage({ type: "STATUS_UPDATE", state: "red" });
       try { ws.close(); } catch(e){}
+      connectionStatus = "red";
+      chrome.storage.local.set({ connectionStatus: "red" });
     };
   };
 
@@ -167,29 +180,59 @@ function deactivateCapture() {
 // ============================================================================
 // LISTENER DE MENSAJES (POPUP / EXTENSIÓN INTERNA)
 // ============================================================================
+// ============================================================================
+// LISTENER ÚNICO DE MENSAJES (POPUP / EXTENSIÓN INTERNA)
+// ============================================================================
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg) {
-    sendResponse({ ok: false, err: "no-msg" });
-    return;
-  }
+    if (!msg) {
+        sendResponse({ ok: false, err: "no-msg" });
+        return;
+    }
 
-  // Iniciar captura desde popup
-  if (msg.cmd === "START_CAPTURE") {
-    const act = activateCapture();
-    if (!act.ok) { sendResponse({ ok: false, err: act.err }); return; }
+    // -------------------------
+    // POPUP: Estado del semáforo
+    // -------------------------
+    if (msg.type === "POPUP_READY") {
+        sendResponse({ status: connectionStatus });
+        return true;
+    }
 
-    chrome.tabs.create({ url: "https://music.youtube.com" }, (tab) => {
-      console.log("[BG] opened tab for YT Music:", tab && tab.id);
-      sendResponse({ ok: true });
-    });
-    return true; // respuesta asíncrona
-  }
+    if (msg.type === "GET_STATUS") {
+        sendResponse({ status: connectionStatus });
+        return true;
+    }
 
-  // Permitir al popup consultar el nonce actual
-  if (msg.cmd === "GET_NONCE") {
-    sendResponse({ ok: true, nonce: currentNonce });
-    return;
-  }
+    if (msg.type === "SET_STATUS") {
+        connectionStatus = msg.value;
+        chrome.storage.local.set({ connectionStatus });
+        sendResponse({ ok: true });
+        return true;
+    }
 
-  sendResponse({ ok: false, err: "invalid-cmd" });
+    // -------------------------
+    // POPUP: Captura
+    // -------------------------
+    if (msg.cmd === "START_CAPTURE") {
+        const act = activateCapture();
+        if (!act.ok) {
+            sendResponse({ ok: false, err: act.err });
+            return;
+        }
+
+        chrome.tabs.create({ url: "https://music.youtube.com" }, (tab) => {
+            console.log("[BG] opened tab for YT Music:", tab && tab.id);
+            sendResponse({ ok: true });
+        });
+        return true;
+    }
+
+    if (msg.cmd === "GET_NONCE") {
+        sendResponse({ ok: true, nonce: currentNonce });
+        return;
+    }
+
+    // -------------------------
+    // DEFAULT
+    // -------------------------
+    sendResponse({ ok: false, err: "invalid-cmd" });
 });
